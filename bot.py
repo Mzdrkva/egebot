@@ -1,145 +1,173 @@
+import logging
 import json
 from pathlib import Path
-import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import executor
 
-# =====================
-# Настройки бота
-# =====================
+# ----------------- Настройки -----------------
+API_TOKEN = "ВАШ_BOT_TOKEN_HERE"  # <-- вставьте свой токен
 
-BOT_TOKEN = '8065641616:AAHpIakr9YJk6jYPE4H_lp2CelIrh18ocNI'  # ← замените на токен от @BotFather
+# Путь к JSON с факультетами
+FACULTIES_FILE = Path(__file__).parent / "faculties.json"
 
-bot = Bot(token=BOT_TOKEN)
+# Всё допустимые предметы ЕГЭ (можете расширить этот список)
+ALL_SUBJECTS = [
+    "Математика", "Физика", "Русский язык", "Информатика", "Биология",
+    "Химия", "История", "Иностранный язык", "Обществознание", "География"
+]
+# ---------------------------------------------
+
+# Логирование
+logging.basicConfig(level=logging.INFO)
+
+# Инициализация бота
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# =====================
-# Данные ЕГЭ и фасультетов
-# =====================
+# Пользовательские данные хранятся в памяти (для демо). 
+# key: user_id, value: set добавленных предметов
+user_subjects: dict[int, set[str]] = {}
+# key: user_id, value: режим ("add", "del" или None)
+user_mode: dict[int, str] = {}
 
-# Все возможные предметы ЕГЭ (можно расширить при необходимости)
-EGE_SUBJECTS = [
-    'Математика', 'Физика', 'Русский язык', 'Информатика',
-    'Химия', 'Биология', 'История', 'Обществознание',
-    'Иностранный язык', 'География', 'Литература'
-]
-
-# Хранилище предметов каждого пользователя: user_id -> список предметов
-user_ege = {}
-
-# Загрузка списка факультетов и программ из JSON
-FACULTIES_FILE = Path(__file__).parent / "faculties.json"
-with open(FACULTIES_FILE, "r", encoding="utf-8") as f:
+# Загрузка списка факультетов
+with open(FACULTIES_FILE, encoding="utf-8") as f:
     FACULTIES = json.load(f)
-    # FACULTIES — список словарей:
-    # { "faculty": "...", "program": "...", "subjects": ["Математика", ...] }
 
-# =====================
-# Клавиатуры
-# =====================
+# --- Утилиты ---
+def parse_requirements(raw: list):
+    """
+    Проверяет, выполняет ли набор пользовательских предметов raw
+    все требования одной программы.
+    requirements может быть: строка или список альтернатив.
+    """
+    have = set(raw)
+    for req in raw: pass  # just for type hint
+    # not used
 
-# Главное меню
-main_kb = ReplyKeyboardMarkup(resize_keyboard=True)
-main_kb.add(KeyboardButton("Сданные предметы ЕГЭ"), KeyboardButton("Узнать на какие факультеты я могу поступить"))
+def check_requirements(have: set[str], requirements: list):
+    """
+    requirements: list элементов, где
+      - элемент = str ― обязательный предмет
+      - элемент = list[str] ― нужно хотя бы один из списка
+    """
+    for req in requirements:
+        if isinstance(req, list):
+            # проверяем, что есть хотя бы один из альтернатив
+            if not any(r in have for r in req):
+                return False
+        else:
+            # обычное требование
+            if req not in have:
+                return False
+    return True
 
-# Меню управления ЕГЭ
-ege_kb = ReplyKeyboardMarkup(resize_keyboard=True)
-ege_kb.add(KeyboardButton("➕ Добавить предметы"), KeyboardButton("➖ Удалить предметы"))
-ege_kb.add(KeyboardButton("🔙 Назад"))
+def main_keyboard() -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("✅ Сданные предметы ЕГЭ", "🎓 Узнать на какие факультеты")
+    return kb
 
-# =====================
-# Хэндлеры
-# =====================
+def subjects_keyboard() -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for subj in ALL_SUBJECTS:
+        kb.add(subj)
+    kb.add("⏹ Прекратить")
+    return kb
 
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    await message.answer(
-        "Привет! Я помогу тебе узнать, куда ты можешь поступить по ЕГЭ.",
-        reply_markup=main_kb
+# --- Обработчики ---
+@dp.message_handler(commands=["start"])
+async def cmd_start(msg: types.Message):
+    user_subjects.setdefault(msg.from_user.id, set())
+    user_mode[msg.from_user.id] = None
+    await msg.reply(
+        "Привет!\nЯ помогу тебе узнать, на какие факультеты ты можешь поступить по твоим результатам ЕГЭ.\n\n"
+        "Выбери действие:",
+        reply_markup=main_keyboard()
     )
 
-@dp.message_handler(lambda m: m.text == "Сданные предметы ЕГЭ")
-async def show_ege(message: types.Message):
-    user_id = message.from_user.id
-    subjects = user_ege.get(user_id, [])
-    if subjects:
-        await message.answer(f"Ты добавил: {', '.join(subjects)}", reply_markup=ege_kb)
+@dp.message_handler(lambda m: m.text == "✅ Сданные предметы ЕГЭ")
+async def show_subjects(msg: types.Message):
+    uid = msg.from_user.id
+    have = user_subjects.get(uid, set())
+    if have:
+        await msg.reply("Твои текущие предметы:\n" + ", ".join(sorted(have)))
     else:
-        await message.answer("У тебя пока нет добавленных предметов.", reply_markup=ege_kb)
+        await msg.reply("У тебя ещё нет добавленных предметов.")
+    # Предложим добавить или удалить
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("➕ Добавить предметы", "➖ Удалить предметы")
+    kb.add("⏹ Главное меню")
+    await msg.answer("Что дальше?", reply_markup=kb)
 
 @dp.message_handler(lambda m: m.text == "➕ Добавить предметы")
-async def add_subjects(message: types.Message):
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    for subj in EGE_SUBJECTS:
-        markup.insert(KeyboardButton(subj))
-    markup.add(KeyboardButton("✅ Готово"))
-    await message.answer("Выбери предметы ЕГЭ (нажми несколько раз, чтобы добавить несколько):", reply_markup=markup)
-
-@dp.message_handler(lambda m: m.text in EGE_SUBJECTS)
-async def save_subject(message: types.Message):
-    user_id = message.from_user.id
-    user_ege.setdefault(user_id, [])
-    if message.text not in user_ege[user_id]:
-        user_ege[user_id].append(message.text)
-        await message.answer(f"{message.text} добавлен.")
-    else:
-        await message.answer(f"{message.text} уже есть в списке.")
-
-@dp.message_handler(lambda m: m.text == "✅ Готово")
-async def done_adding(message: types.Message):
-    await message.answer("ОК, возвращаюсь в меню ЕГЭ.", reply_markup=ege_kb)
+async def enter_add_mode(msg: types.Message):
+    uid = msg.from_user.id
+    user_mode[uid] = "add"
+    await msg.reply("Выбери предмет, чтобы добавить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
 
 @dp.message_handler(lambda m: m.text == "➖ Удалить предметы")
-async def delete_subjects(message: types.Message):
-    user_id = message.from_user.id
-    current = user_ege.get(user_id, [])
-    if not current:
-        await message.answer("У тебя нет предметов для удаления.", reply_markup=ege_kb)
+async def enter_del_mode(msg: types.Message):
+    uid = msg.from_user.id
+    user_mode[uid] = "del"
+    await msg.reply("Выбери предмет, чтобы удалить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
+
+@dp.message_handler(lambda m: m.text == "⏹ Прекратить")
+async def stop_mode(msg: types.Message):
+    uid = msg.from_user.id
+    user_mode[uid] = None
+    await msg.reply("Выход из режима редактирования.", reply_markup=main_keyboard())
+
+@dp.message_handler(lambda m: m.from_user.id in user_mode and user_mode[m.from_user.id] in ("add","del"))
+async def handle_add_del(msg: types.Message):
+    uid = msg.from_user.id
+    mode = user_mode[uid]
+    text = msg.text
+
+    if text not in ALL_SUBJECTS:
+        await msg.reply("Пожалуйста, выбери предмет из списка или «⏹ Прекратить».")
         return
 
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    for subj in current:
-        markup.insert(KeyboardButton(f"Удалить {subj}"))
-    markup.add(KeyboardButton("✅ Готово"))
-    await message.answer("Выбери предметы для удаления:", reply_markup=markup)
+    if mode == "add":
+        user_subjects[uid].add(text)
+        await msg.reply(f"Добавил: {text}")
+    else:  # mode == "del"
+        if text in user_subjects[uid]:
+            user_subjects[uid].remove(text)
+            await msg.reply(f"Удалил: {text}")
+        else:
+            await msg.reply(f"У тебя нет предмета «{text}».")
 
-@dp.message_handler(lambda m: m.text.startswith("Удалить "))
-async def remove_subject(message: types.Message):
-    user_id = message.from_user.id
-    subject = message.text.replace("Удалить ", "")
-    if subject in user_ege.get(user_id, []):
-        user_ege[user_id].remove(subject)
-        await message.answer(f"{subject} удалён.")
-    else:
-        await message.answer("Не могу удалить — нет такого предмета.")
+    # Остаёмся в том же режиме, список клавиш не меняется
 
-@dp.message_handler(lambda m: m.text == "Узнать на какие факультеты я могу поступить")
-async def show_faculties(message: types.Message):
-    user_id = message.from_user.id
-    user_subjects = set(user_ege.get(user_id, []))
-    if not user_subjects:
-        await message.answer("Сначала добавь хотя бы один предмет ЕГЭ.", reply_markup=main_kb)
+@dp.message_handler(lambda m: m.text == "⏹ Главное меню")
+async def back_to_main(msg: types.Message):
+    user_mode[msg.from_user.id] = None
+    await msg.reply("Главное меню:", reply_markup=main_keyboard())
+
+@dp.message_handler(lambda m: m.text == "🎓 Узнать на какие факультеты")
+async def show_faculties(msg: types.Message):
+    uid = msg.from_user.id
+    have = user_subjects.get(uid, set())
+    if not have:
+        await msg.reply("Сначала добавь хотя бы один предмет ЕГЭ.", reply_markup=main_keyboard())
         return
 
     matches = []
     for item in FACULTIES:
-        required = set(item["subjects"])
-        if required.issubset(user_subjects):
+        reqs = item.get("requirements") or item.get("subjects") or []
+        if check_requirements(have, reqs):
             matches.append(f"🏛 {item['faculty']} — {item['program']}")
 
     if matches:
-        await message.answer("Ты можешь поступать на:\n\n" + "\n".join(matches), reply_markup=main_kb)
+        await msg.reply("Ты можешь поступать на:\n\n" + "\n".join(matches), reply_markup=main_keyboard())
     else:
-        await message.answer("Пока ни одна программа не подходит под твои предметы.", reply_markup=main_kb)
+        await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
 
-@dp.message_handler(lambda m: m.text == "🔙 Назад")
-async def back_to_main(message: types.Message):
-    await message.answer("Главное меню:", reply_markup=main_kb)
-
-# =====================
-# Запуск бота
-# =====================
+# --- Запуск ---
+async def on_startup(dp: Dispatcher):
+    # Снимаем webhook, чтобы использовать polling
+    await bot.delete_webhook()
+    logging.info("Webhook deleted, polling started.")
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
