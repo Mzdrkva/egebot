@@ -20,6 +20,7 @@ ALL_SUBJECTS = [
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Инициализация бота
 bot = Bot(token=API_TOKEN)
@@ -38,11 +39,6 @@ with open(FACULTIES_FILE, encoding="utf-8") as f:
 # --- Утилиты ---
 
 def check_requirements(have: set[str], requirements: list):
-    """
-    Проверяем, что множество have удовлетворяет всем requirements:
-      - если элемент списка - строка, то он обязателен;
-      - если элемент - список, то хотя бы один в этом списке должен быть.
-    """
     for req in requirements:
         if isinstance(req, list):
             if not any(r in have for r in req):
@@ -76,11 +72,13 @@ async def cmd_start(msg: types.Message):
         "Выбери действие:",
         reply_markup=main_keyboard()
     )
+    logger.info(f"[{uid}] Начало работы, режим сброшен.")
 
 @dp.message_handler(lambda m: m.text == "✅ Сданные предметы ЕГЭ")
 async def show_subjects(msg: types.Message):
     uid = msg.from_user.id
     have = user_subjects.setdefault(uid, set())
+    logger.info(f"[{uid}] Показываю предметы: {have}")
     if have:
         await msg.reply("Твои текущие предметы:\n" + ", ".join(sorted(have)))
     else:
@@ -94,18 +92,21 @@ async def show_subjects(msg: types.Message):
 async def enter_add_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "add"
-    await msg.reply("Выбери предмет, чтобы добавить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
+    logger.info(f"[{uid}] Вошёл в режим добавления")
+    await msg.reply("Выбери предмет для добавления:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
 
 @dp.message_handler(lambda m: m.text == "➖ Удалить предметы")
 async def enter_del_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "del"
-    await msg.reply("Выбери предмет, чтобы удалить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
+    logger.info(f"[{uid}] Вошёл в режим удаления")
+    await msg.reply("Выбери предмет для удаления:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
 
 @dp.message_handler(lambda m: m.text == "⏹ Прекратить")
 async def stop_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = None
+    logger.info(f"[{uid}] Вышел из режима редактирования")
     await msg.reply("Выход из режима редактирования.", reply_markup=main_keyboard())
 
 @dp.message_handler(lambda m: m.from_user.id in user_mode and user_mode[m.from_user.id] in ("add","del"))
@@ -113,6 +114,7 @@ async def handle_add_del(msg: types.Message):
     uid = msg.from_user.id
     mode = user_mode.get(uid)
     text = msg.text
+    logger.info(f"[{uid}] handle_add_del mode={mode} text={text!r}")
 
     if text not in ALL_SUBJECTS:
         await msg.reply("Пожалуйста, выбери предмет из списка или «⏹ Прекратить».")
@@ -123,10 +125,12 @@ async def handle_add_del(msg: types.Message):
     if mode == "add":
         have.add(text)
         await msg.reply(f"✅ Добавил: {text}")
-    else:  # mode == "del"
+        logger.info(f"[{uid}] Предметы после добавления: {have}")
+    else:  # "del"
         if text in have:
             have.remove(text)
             await msg.reply(f"🗑 Удалил: {text}")
+            logger.info(f"[{uid}] Предметы после удаления: {have}")
         else:
             await msg.reply(f"⚠️ У тебя нет предмета «{text}».")
 
@@ -134,19 +138,21 @@ async def handle_add_del(msg: types.Message):
 async def back_to_main(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = None
+    logger.info(f"[{uid}] Назад в главное меню")
     await msg.reply("Главное меню:", reply_markup=main_keyboard())
 
 @dp.message_handler(lambda m: m.text == "🎓 Узнать на какие факультеты")
 async def show_faculties(msg: types.Message):
     uid = msg.from_user.id
     have = user_subjects.setdefault(uid, set())
+    logger.info(f"[{uid}] show_faculties with {have}")
     if not have:
         await msg.reply("Сначала добавь хотя бы один предмет ЕГЭ.", reply_markup=main_keyboard())
         return
 
     matches = []
     for item in FACULTIES:
-        reqs = item.get("requirements") or item.get("subjects") or []
+        reqs = item.get("requirements", [])
         if check_requirements(have, reqs):
             matches.append(f"🏛 {item['faculty']} — {item['program']}")
 
@@ -159,7 +165,7 @@ async def show_faculties(msg: types.Message):
 
 async def on_startup(dp: Dispatcher):
     await bot.delete_webhook()
-    logging.info("Webhook deleted; starting polling.")
+    logger.info("Webhook deleted; starting polling.")
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
