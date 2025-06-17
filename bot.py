@@ -5,22 +5,17 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
 # ----------------- Настройки -----------------
-API_TOKEN = "8065641616:AAHpIakr9YJk6jYPE4H_lp2CelIrh18ocNI"  # <-- вставьте свой токен
+API_TOKEN = "ВАШ_BOT_TOKEN_HERE"  # <-- вставьте свой токен
 
 # Путь к JSON с факультетами
 FACULTIES_FILE = Path(__file__).parent / "faculties.json"
 
-# Всё допустимые предметы ЕГЭ (можете расширить этот список)
---- bot.py
-+++ bot.py
-@@ ALL_SUBJECTS = [
--    "Математика", "Физика", "Русский язык", "Информатика", "Биология",
--    "Химия", "История", "Иностранный язык", "Обществознание", "География"
-+    "Математика", "Физика", "Русский язык", "Информатика", "Биология",
-+    "Химия", "История", "Иностранный язык", "Обществознание", "География",
-+    "Литература"
- ]
-
+# Все допустимые предметы ЕГЭ
+ALL_SUBJECTS = [
+    "Математика", "Физика", "Русский язык", "Информатика", "Биология",
+    "Химия", "История", "Иностранный язык", "Обществознание", "География",
+    "Литература"
+]
 # ---------------------------------------------
 
 # Логирование
@@ -30,10 +25,10 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Пользовательские данные хранятся в памяти (для демо). 
-# key: user_id, value: set добавленных предметов
+# Пользовательские данные хранятся в памяти:
+# user_subjects[user_id] = set([...])
+# user_mode[user_id] = "add" | "del" | None
 user_subjects: dict[int, set[str]] = {}
-# key: user_id, value: режим ("add", "del" или None)
 user_mode: dict[int, str] = {}
 
 # Загрузка списка факультетов
@@ -41,29 +36,18 @@ with open(FACULTIES_FILE, encoding="utf-8") as f:
     FACULTIES = json.load(f)
 
 # --- Утилиты ---
-def parse_requirements(raw: list):
-    """
-    Проверяет, выполняет ли набор пользовательских предметов raw
-    все требования одной программы.
-    requirements может быть: строка или список альтернатив.
-    """
-    have = set(raw)
-    for req in raw: pass  # just for type hint
-    # not used
 
 def check_requirements(have: set[str], requirements: list):
     """
-    requirements: list элементов, где
-      - элемент = str ― обязательный предмет
-      - элемент = list[str] ― нужно хотя бы один из списка
+    Проверяем, что множество have удовлетворяет всем requirements:
+      - если элемент списка - строка, то он обязателен;
+      - если элемент - список, то хотя бы один в этом списке должен быть.
     """
     for req in requirements:
         if isinstance(req, list):
-            # проверяем, что есть хотя бы один из альтернатив
             if not any(r in have for r in req):
                 return False
         else:
-            # обычное требование
             if req not in have:
                 return False
     return True
@@ -81,10 +65,12 @@ def subjects_keyboard() -> types.ReplyKeyboardMarkup:
     return kb
 
 # --- Обработчики ---
+
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
-    user_subjects.setdefault(msg.from_user.id, set())
-    user_mode[msg.from_user.id] = None
+    uid = msg.from_user.id
+    user_subjects.setdefault(uid, set())
+    user_mode[uid] = None
     await msg.reply(
         "Привет!\nЯ помогу тебе узнать, на какие факультеты ты можешь поступить по твоим результатам ЕГЭ.\n\n"
         "Выбери действие:",
@@ -94,7 +80,8 @@ async def cmd_start(msg: types.Message):
 @dp.message_handler(lambda m: m.text == "✅ Сданные предметы ЕГЭ")
 async def show_subjects(msg: types.Message):
     uid = msg.from_user.id
-    have = user_subjects.get(uid, set())
+    # Гарантируем, что запись есть
+    have = user_subjects.setdefault(uid, set())
     if have:
         await msg.reply("Твои текущие предметы:\n" + ", ".join(sorted(have)))
     else:
@@ -108,13 +95,13 @@ async def show_subjects(msg: types.Message):
 @dp.message_handler(lambda m: m.text == "➕ Добавить предметы")
 async def enter_add_mode(msg: types.Message):
     uid = msg.from_user.id
-    user_mode[uid] = "add"
+    user_mode.setdefault(uid, "add")
     await msg.reply("Выбери предмет, чтобы добавить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
 
 @dp.message_handler(lambda m: m.text == "➖ Удалить предметы")
 async def enter_del_mode(msg: types.Message):
     uid = msg.from_user.id
-    user_mode[uid] = "del"
+    user_mode.setdefault(uid, "del")
     await msg.reply("Выбери предмет, чтобы удалить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
 
 @dp.message_handler(lambda m: m.text == "⏹ Прекратить")
@@ -126,34 +113,38 @@ async def stop_mode(msg: types.Message):
 @dp.message_handler(lambda m: m.from_user.id in user_mode and user_mode[m.from_user.id] in ("add","del"))
 async def handle_add_del(msg: types.Message):
     uid = msg.from_user.id
-    mode = user_mode[uid]
+    mode = user_mode.get(uid)
     text = msg.text
 
     if text not in ALL_SUBJECTS:
         await msg.reply("Пожалуйста, выбери предмет из списка или «⏹ Прекратить».")
         return
 
-    if mode == "add":
-        user_subjects[uid].add(text)
-        await msg.reply(f"Добавил: {text}")
-    else:  # mode == "del"
-        if text in user_subjects[uid]:
-            user_subjects[uid].remove(text)
-            await msg.reply(f"Удалил: {text}")
-        else:
-            await msg.reply(f"У тебя нет предмета «{text}».")
+    # Гарантируем, что у пользователя есть множество
+    have = user_subjects.setdefault(uid, set())
 
-    # Остаёмся в том же режиме, список клавиш не меняется
+    if mode == "add":
+        have.add(text)
+        await msg.reply(f"✅ Добавил: {text}")
+    else:  # mode == "del"
+        if text in have:
+            have.remove(text)
+            await msg.reply(f"🗑 Удалил: {text}")
+        else:
+            await msg.reply(f"⚠️ У тебя нет предмета «{text}».")
+
+    # остаёмся в том же режиме, клавиатура не меняется
 
 @dp.message_handler(lambda m: m.text == "⏹ Главное меню")
 async def back_to_main(msg: types.Message):
-    user_mode[msg.from_user.id] = None
+    uid = msg.from_user.id
+    user_mode[uid] = None
     await msg.reply("Главное меню:", reply_markup=main_keyboard())
 
 @dp.message_handler(lambda m: m.text == "🎓 Узнать на какие факультеты")
 async def show_faculties(msg: types.Message):
     uid = msg.from_user.id
-    have = user_subjects.get(uid, set())
+    have = user_subjects.setdefault(uid, set())
     if not have:
         await msg.reply("Сначала добавь хотя бы один предмет ЕГЭ.", reply_markup=main_keyboard())
         return
@@ -170,10 +161,11 @@ async def show_faculties(msg: types.Message):
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
 
 # --- Запуск ---
+
 async def on_startup(dp: Dispatcher):
-    # Снимаем webhook, чтобы использовать polling
+    # Снимаем webhook, чтобы не было конфликта
     await bot.delete_webhook()
-    logging.info("Webhook deleted, polling started.")
+    logging.info("Webhook deleted; starting polling.")
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
