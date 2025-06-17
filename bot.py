@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
 # ----------------- Настройки -----------------
-API_TOKEN = "8065641616:AAHpIakr9YJk6jYPE4H_lp2CelIrh18ocNI"  # <-- вставьте свой токен
+API_TOKEN = "ВАШ_BOT_TOKEN_HERE"  # <-- вставьте свой токен
 
 # Путь к JSON с факультетами
 FACULTIES_FILE = Path(__file__).parent / "faculties.json"
@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Пользовательские данные хранятся в памяти:
+# Пользовательские данные в памяти:
 # user_subjects[user_id] = set([...])
 # user_mode[user_id] = "add" | "del" | None
 user_subjects: dict[int, set[str]] = {}
@@ -80,13 +80,11 @@ async def cmd_start(msg: types.Message):
 @dp.message_handler(lambda m: m.text == "✅ Сданные предметы ЕГЭ")
 async def show_subjects(msg: types.Message):
     uid = msg.from_user.id
-    # Гарантируем, что запись есть
     have = user_subjects.setdefault(uid, set())
     if have:
         await msg.reply("Твои текущие предметы:\n" + ", ".join(sorted(have)))
     else:
         await msg.reply("У тебя ещё нет добавленных предметов.")
-    # Предложим добавить или удалить
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("➕ Добавить предметы", "➖ Удалить предметы")
     kb.add("⏹ Главное меню")
@@ -95,13 +93,13 @@ async def show_subjects(msg: types.Message):
 @dp.message_handler(lambda m: m.text == "➕ Добавить предметы")
 async def enter_add_mode(msg: types.Message):
     uid = msg.from_user.id
-    user_mode.setdefault(uid, "add")
+    user_mode[uid] = "add"
     await msg.reply("Выбери предмет, чтобы добавить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
 
 @dp.message_handler(lambda m: m.text == "➖ Удалить предметы")
 async def enter_del_mode(msg: types.Message):
     uid = msg.from_user.id
-    user_mode.setdefault(uid, "del")
+    user_mode[uid] = "del"
     await msg.reply("Выбери предмет, чтобы удалить:\n(или «⏹ Прекратить»)", reply_markup=subjects_keyboard())
 
 @dp.message_handler(lambda m: m.text == "⏹ Прекратить")
@@ -120,7 +118,6 @@ async def handle_add_del(msg: types.Message):
         await msg.reply("Пожалуйста, выбери предмет из списка или «⏹ Прекратить».")
         return
 
-    # Гарантируем, что у пользователя есть множество
     have = user_subjects.setdefault(uid, set())
 
     if mode == "add":
@@ -132,8 +129,6 @@ async def handle_add_del(msg: types.Message):
             await msg.reply(f"🗑 Удалил: {text}")
         else:
             await msg.reply(f"⚠️ У тебя нет предмета «{text}».")
-
-    # остаёмся в том же режиме, клавиатура не меняется
 
 @dp.message_handler(lambda m: m.text == "⏹ Главное меню")
 async def back_to_main(msg: types.Message):
@@ -163,7 +158,6 @@ async def show_faculties(msg: types.Message):
 # --- Запуск ---
 
 async def on_startup(dp: Dispatcher):
-    # Снимаем webhook, чтобы не было конфликта
     await bot.delete_webhook()
     logging.info("Webhook deleted; starting polling.")
 
