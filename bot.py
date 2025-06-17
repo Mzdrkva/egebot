@@ -37,11 +37,6 @@ with open(FACULTIES_FILE, encoding="utf-8") as f:
 # --- Вспомогательные функции ---
 
 def check_requirements(have: set[str], requirements: list):
-    """
-    Проверяем, что множество have удовлетворяет всем требованиям:
-     - если элемент списка - строка, то он обязателен;
-     - если элемент - список, то хотя бы один из альтернатив обязателен.
-    """
     for req in requirements:
         if isinstance(req, list):
             if not any(r in have for r in req):
@@ -63,26 +58,34 @@ def subjects_keyboard():
     kb.add("⏹ Прекратить")
     return kb
 
-# --- Обработчики команд и сообщений ---
+# --- Обработчики ---
 
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
     uid = msg.from_user.id
     user_subjects.setdefault(uid, set())
     user_mode[uid] = None
-    await msg.reply(
-        "Привет!\nЯ помогу тебе узнать, на какие факультеты ты можешь поступить по результатам ЕГЭ.\n\n"
-        "Выбери действие:",
-        reply_markup=main_keyboard()
+
+    # Первое сообщение с инструкцией
+    instruction = (
+        "👋 Добро пожаловать!\n\n"
+        "📋 Инструкция:\n"
+        "1) Нажмите «✅ Сданные предметы ЕГЭ», чтобы добавить или удалить предметы.\n"
+        "2) В режиме добавления/удаления выберите нужные предметы и нажмите «⏹ Прекратить».\n"
+        "3) Нажмите «🎓 Узнать на какие факультеты», чтобы получить список факультетов.\n"
     )
-    logger.info(f"[{uid}] Запущен /start")
+    await msg.answer(instruction)
+
+    # Затем выводим главное меню
+    await msg.answer("Главное меню:", reply_markup=main_keyboard())
+    logger.info(f"[{uid}] /start — отправлена инструкция и главное меню")
 
 @dp.message_handler(lambda m: m.text == "✅ Сданные предметы ЕГЭ")
 async def show_subjects(msg: types.Message):
     uid = msg.from_user.id
     have = user_subjects.setdefault(uid, set())
     if have:
-        await msg.reply("Твои предметы:\n" + ", ".join(sorted(have)))
+        await msg.reply("Твои текущие предметы:\n" + ", ".join(sorted(have)))
     else:
         await msg.reply("У тебя ещё нет добавленных предметов.")
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -96,27 +99,28 @@ async def enter_add_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "add"
     await msg.reply("Выбери предмет для добавления (или «⏹ Прекратить»):", reply_markup=subjects_keyboard())
-    logger.info(f"[{uid}] Вошёл в режим добавления")
+    logger.info(f"[{uid}] Режим добавления активирован")
 
 @dp.message_handler(lambda m: m.text == "➖ Удалить предметы")
 async def enter_del_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "del"
     await msg.reply("Выбери предмет для удаления (или «⏹ Прекратить»):", reply_markup=subjects_keyboard())
-    logger.info(f"[{uid}] Вошёл в режим удаления")
+    logger.info(f"[{uid}] Режим удаления активирован")
 
 @dp.message_handler(lambda m: m.text == "⏹ Прекратить")
 async def stop_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = None
     await msg.reply("Выход из режима редактирования.", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] Вышел из режима редактирования")
+    logger.info(f"[{uid}] Режим редактирования завершён")
 
 @dp.message_handler(lambda m: m.from_user.id in user_mode and user_mode[m.from_user.id] in ("add","del"))
 async def handle_add_del(msg: types.Message):
     uid = msg.from_user.id
     mode = user_mode[uid]
     subj = msg.text
+
     if subj not in ALL_SUBJECTS:
         await msg.reply("Пожалуйста, выбери предмет из списка или «⏹ Прекратить».")
         return
@@ -125,12 +129,12 @@ async def handle_add_del(msg: types.Message):
     if mode == "add":
         have.add(subj)
         await msg.reply(f"✅ Добавил: {subj}")
-        logger.info(f"[{uid}] Добавлен предмет {subj}")
+        logger.info(f"[{uid}] Добавлен предмет: {subj}")
     else:
         if subj in have:
             have.remove(subj)
             await msg.reply(f"🗑 Удалил: {subj}")
-            logger.info(f"[{uid}] Удалён предмет {subj}")
+            logger.info(f"[{uid}] Удалён предмет: {subj}")
         else:
             await msg.reply(f"⚠️ У тебя нет предмета «{subj}».")
 
@@ -139,7 +143,7 @@ async def back_to_main(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = None
     await msg.reply("Главное меню:", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] Возврат в главное меню")
+    logger.info(f"[{uid}] Возврат к главному меню")
 
 @dp.message_handler(lambda m: m.text == "🎓 Узнать на какие факультеты")
 async def show_faculties(msg: types.Message):
@@ -159,14 +163,13 @@ async def show_faculties(msg: types.Message):
         await msg.reply("Ты можешь поступать на:\n\n" + "\n".join(matches), reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] Найдено {len(matches)} подходящих программ")
+    logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
 
-# --- Запуск ---
+# --- Запуск polling с удалением webhook ---
 
 async def on_startup(dp: Dispatcher):
-    # Снимаем webhook, чтобы избежать конфликтов с polling
     await bot.delete_webhook(drop_pending_updates=True)
-    logger.info("Webhook deleted on startup")
+    logger.info("Webhook удалён перед стартом polling")
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
