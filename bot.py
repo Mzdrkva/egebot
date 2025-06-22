@@ -26,11 +26,11 @@ dp = Dispatcher(bot)
 user_subjects: dict[int, set[str]] = {}
 user_mode: dict[int, str] = {}
 
-# Загрузка списка факультетов
+# Загрузка списка факультетов из JSON
 with open(FACULTIES_FILE, encoding="utf-8") as f:
     FACULTIES = json.load(f)
 
-# --- Вспомогательные функции ---
+# --- Утилиты ---
 
 def check_requirements(have: set[str], requirements: list) -> bool:
     for req in requirements:
@@ -42,6 +42,11 @@ def check_requirements(have: set[str], requirements: list) -> bool:
                 return False
     return True
 
+# Загружаем факультеты: учитываем ключи "requirements" и "subjects"
+# Загрузка JSON факультетов уже выполнена выше
+
+
+# Клавиатуры
 def main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("Мои ЕГЭ", "Мои факультеты")
@@ -54,7 +59,7 @@ def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
     kb.add("⏹️ Прекратить")
     return kb
 
-# --- Обработчики ---
+# --- Хэндлеры ---
 
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
@@ -137,7 +142,7 @@ async def handle_add_del(msg: types.Message):
 
     if mode == "add":
         if subj not in ALL_SUBJECTS:
-            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить».")
+            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить»." )
             return
         have.add(subj)
         await msg.reply(f"✅ Добавил: {subj}")
@@ -165,21 +170,36 @@ async def show_faculties(msg: types.Message):
         await msg.reply("Сначала добавь хотя бы один предмет ЕГЭ.", reply_markup=main_keyboard())
         return
 
-    matches = [
-        f"{item['faculty']} — {item['program']}"
-        for item in FACULTIES
-        if check_requirements(have, item.get("requirements", []))
-    ]
+    matches = []
+    for item in FACULTIES:
+        # Поддерживаем оба варианта ключа: "requirements" или "subjects"
+        reqs = item.get("requirements") or item.get("subjects") or []
+        if check_requirements(have, reqs):
+            matches.append(f"{item['faculty']} — {item['program']}")
 
     if matches:
         subj_list = ", ".join(sorted(have))
         header = f"С предметами {subj_list} можно поступить на:"
-        await msg.reply(f"{header}\n\n" + "\n\n".join(matches), reply_markup=main_keyboard())
+        await msg.reply(f"{header}
+
+" + "
+
+".join(matches), reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
     logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
+        subj_list = ", ".join(sorted(have))
+        header = f"С предметами {subj_list} можно поступить на:"
+        await msg.reply(f"{header}
 
-async def on_startup(dp: Dispatcher):
+" + "
+
+".join(matches), reply_markup=main_keyboard())
+    else:
+        await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
+    logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")(f"[{uid}] Найдено факультетов: {len(matches)}")
+
+async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook удалён перед стартом polling")
 
