@@ -14,21 +14,24 @@ ALL_SUBJECTS = [
 ]
 # ---------------------------------------------
 
+# Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# В памяти: user_id -> set предметов, user_id -> режим ("add","del",None)
+# В памяти: user_id → set предметов, user_id → режим ("add","del",None)
 user_subjects: dict[int, set[str]] = {}
 user_mode: dict[int, str] = {}
 
-# Загрузка JSON факультетов
+# Загрузка списка факультетов из JSON
 with open(FACULTIES_FILE, encoding="utf-8") as f:
     FACULTIES = json.load(f)
 
 # --- Утилиты ---
+
 def check_requirements(have: set[str], requirements: list) -> bool:
     for req in requirements:
         if isinstance(req, list):
@@ -39,7 +42,6 @@ def check_requirements(have: set[str], requirements: list) -> bool:
                 return False
     return True
 
-# Клавиатуры
 def main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("Мои ЕГЭ", "Мои факультеты")
@@ -52,7 +54,8 @@ def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
     kb.add("⏹️ Прекратить")
     return kb
 
-# --- Хэндлеры ---
+# --- Обработчики ---
+
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
     uid = msg.from_user.id
@@ -60,9 +63,11 @@ async def cmd_start(msg: types.Message):
     subjects.add("Русский язык")
     user_mode[uid] = None
 
-    # Приветствие и возможности
-    await msg.answer("Добрый день! Я — бот-помощник по подбору факультетов МГУ.")
-    await msg.answer("Я помогу тебе узнать, на какие факультеты ты можешь поступить.")
+    # Приветствие и описание возможностей
+    await msg.answer(
+        "Добрый день! Я — бот-помощник по подбору факультетов МГУ.\n\n"
+        "Я помогу тебе узнать, на какие факультеты ты можешь поступить."
+    )
     # Инструкция
     await msg.answer(
         "Инструкция:\n\n"
@@ -70,8 +75,9 @@ async def cmd_start(msg: types.Message):
         "2) В режиме добавления/удаления выбери предметы и нажми «⏹️ Прекратить».\n"
         "3) Нажми «Мои факультеты» — и я покажу список, куда ты можешь подать документы!"
     )
+    # Главное меню
     await msg.answer("Главное меню:", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] /start — добавлен Русский язык")
+    logger.info(f"[{uid}] /start — показано приветствие и инструкция")
 
 @dp.message_handler(lambda m: m.text == "Мои ЕГЭ")
 async def show_subjects(msg: types.Message):
@@ -102,7 +108,7 @@ async def enter_del_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "del"
     have = user_subjects.get(uid, set())
-    # Предметы, кроме Русского
+    # Список для удаления — все, кроме Русского языка
     to_delete = sorted(have - {"Русский язык"})
     if not to_delete:
         await msg.reply(
@@ -129,6 +135,7 @@ async def handle_add_del(msg: types.Message):
     mode = user_mode[uid]
     subj = msg.text
     have = user_subjects.setdefault(uid, set())
+
     if mode == "add":
         if subj not in ALL_SUBJECTS:
             await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить».")
@@ -158,16 +165,20 @@ async def show_faculties(msg: types.Message):
     if not have:
         await msg.reply("Сначала добавь хотя бы один предмет ЕГЭ.", reply_markup=main_keyboard())
         return
+
     matches = [
         f"{item['faculty']} — {item['program']}"
         for item in FACULTIES
         if check_requirements(have, item.get("requirements", []))
     ]
+
     if matches:
         await msg.reply("\n\n".join(matches), reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
     logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
+
+# --- Запуск polling с удалением webhook перед стартом ---
 
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
