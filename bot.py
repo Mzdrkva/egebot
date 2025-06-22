@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
 # ----------------- Настройки -----------------
-API_TOKEN = "8065641616:AAHpIakr9YJk6jYPE4H_lp2CelIrh18ocNI"  # <-- вставьте свой токен
+API_TOKEN = "ВАШ_BOT_TOKEN_HERE"  # <-- вставьте свой токен
 FACULTIES_FILE = Path(__file__).parent / "faculties.json"
 ALL_SUBJECTS = [
     "Математика", "Физика", "Информатика", "Биология",
@@ -26,11 +26,11 @@ dp = Dispatcher(bot)
 user_subjects: dict[int, set[str]] = {}
 user_mode: dict[int, str] = {}
 
-# Загрузка списка факультетов из JSON
+# Загрузка списка факультетов
 with open(FACULTIES_FILE, encoding="utf-8") as f:
     FACULTIES = json.load(f)
 
-# --- Утилиты ---
+# --- Вспомогательные функции ---
 
 def check_requirements(have: set[str], requirements: list) -> bool:
     for req in requirements:
@@ -42,7 +42,6 @@ def check_requirements(have: set[str], requirements: list) -> bool:
                 return False
     return True
 
-# Клавиатуры
 def main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("Мои ЕГЭ", "Мои факультеты")
@@ -55,7 +54,7 @@ def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
     kb.add("⏹️ Прекратить")
     return kb
 
-# --- Хэндлеры ---
+# --- Обработчики ---
 
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
@@ -138,7 +137,7 @@ async def handle_add_del(msg: types.Message):
 
     if mode == "add":
         if subj not in ALL_SUBJECTS:
-            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить»." )
+            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить».")
             return
         have.add(subj)
         await msg.reply(f"✅ Добавил: {subj}")
@@ -175,16 +174,12 @@ async def show_faculties(msg: types.Message):
     if matches:
         subj_list = ", ".join(sorted(have))
         header = f"С предметами {subj_list} можно поступить на:"
-        await msg.reply(f"{header}
-
-" + "
-
-".join(matches), reply_markup=main_keyboard())
+        await msg.reply(f"{header}\n\n" + "\n\n".join(matches), reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")(f"[{uid}] Найдено факультетов: {len(matches)}")
+    logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
 
-async def on_startup(dp):
+async def on_startup(dp: Dispatcher):
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook удалён перед стартом polling")
 
