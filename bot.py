@@ -42,6 +42,7 @@ def check_requirements(have: set[str], requirements: list) -> bool:
                 return False
     return True
 
+# Клавиатуры
 def main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("Мои ЕГЭ", "Мои факультеты")
@@ -54,7 +55,7 @@ def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
     kb.add("⏹️ Прекратить")
     return kb
 
-# --- Обработчики ---
+# --- Хэндлеры ---
 
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
@@ -68,11 +69,11 @@ async def cmd_start(msg: types.Message):
         "Добрый день! Я — бот-помощник по подбору факультетов МГУ.\n\n"
         "Я помогу тебе узнать, на какие факультеты ты можешь поступить."
     )
-    # Инструкция
+    # Инструкция с пустыми строками между пунктами
     await msg.answer(
         "Инструкция:\n\n"
-        "1) Нажми «Мои ЕГЭ», чтобы посмотреть, добавить или удалить предметы ЕГЭ.\n"
-        "2) В режиме добавления/удаления выбери предметы и нажми «⏹️ Прекратить».\n"
+        "1) Нажми «Мои ЕГЭ», чтобы посмотреть, добавить или удалить предметы ЕГЭ.\n\n"
+        "2) В режиме добавления/удаления выбери предметы и нажми «⏹️ Прекратить».\n\n"
         "3) Нажми «Мои факультеты» — и я покажу список, куда ты можешь подать документы!"
     )
     # Главное меню
@@ -108,7 +109,6 @@ async def enter_del_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "del"
     have = user_subjects.get(uid, set())
-    # Список для удаления — все, кроме Русского языка
     to_delete = sorted(have - {"Русский язык"})
     if not to_delete:
         await msg.reply(
@@ -138,7 +138,7 @@ async def handle_add_del(msg: types.Message):
 
     if mode == "add":
         if subj not in ALL_SUBJECTS:
-            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить».")
+            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить»." )
             return
         have.add(subj)
         await msg.reply(f"✅ Добавил: {subj}")
@@ -177,8 +177,6 @@ async def show_faculties(msg: types.Message):
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
     logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
-
-# --- Запуск polling с удалением webhook перед стартом ---
 
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
