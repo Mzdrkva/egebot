@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
 # ----------------- Настройки -----------------
-API_TOKEN = "8065641616:AAHpIakr9YJk6jYPE4H_lp2CelIrh18ocNI"  # <-- вставьте свой токен
+API_TOKEN = "ВАШ_BOT_TOKEN_HERE"  # <-- вставьте свой токен
 FACULTIES_FILE = Path(__file__).parent / "faculties.json"
 ALL_SUBJECTS = [
     "Математика", "Физика", "Информатика", "Биология",
@@ -20,13 +20,15 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# in-memory storage
+# В памяти: user_id -> set предметов, user_id -> режим ("add","del",None)
 user_subjects: dict[int, set[str]] = {}
 user_mode: dict[int, str] = {}
 
+# Загрузка JSON факультетов
 with open(FACULTIES_FILE, encoding="utf-8") as f:
     FACULTIES = json.load(f)
 
+# --- Утилиты ---
 def check_requirements(have: set[str], requirements: list) -> bool:
     for req in requirements:
         if isinstance(req, list):
@@ -37,22 +39,20 @@ def check_requirements(have: set[str], requirements: list) -> bool:
                 return False
     return True
 
+# Клавиатуры
 def main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("Мои ЕГЭ", "Мои факультеты")
     return kb
 
 def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
-    """
-    Создает клавиатуру из переданного списка subjects
-    и добавляет кнопку «⏹️ Прекратить» внизу.
-    """
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for subj in subjects:
         kb.add(subj)
     kb.add("⏹️ Прекратить")
     return kb
 
+# --- Хэндлеры ---
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
     uid = msg.from_user.id
@@ -60,7 +60,7 @@ async def cmd_start(msg: types.Message):
     subjects.add("Русский язык")
     user_mode[uid] = None
 
-    # Приветствие
+    # Приветствие и возможности
     await msg.answer("Добрый день! Я — бот-помощник по подбору факультетов МГУ.")
     await msg.answer("Я помогу тебе узнать, на какие факультеты ты можешь поступить.")
     # Инструкция
@@ -71,7 +71,7 @@ async def cmd_start(msg: types.Message):
         "3) Нажми «Мои факультеты» — и я покажу список, куда ты можешь подать документы!"
     )
     await msg.answer("Главное меню:", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] /start — русский язык добавлен автоматически")
+    logger.info(f"[{uid}] /start — добавлен Русский язык")
 
 @dp.message_handler(lambda m: m.text == "Мои ЕГЭ")
 async def show_subjects(msg: types.Message):
@@ -82,41 +82,39 @@ async def show_subjects(msg: types.Message):
     else:
         await msg.reply("У тебя ещё нет добавленных предметов.")
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("➕ Добавить предметы", "➖ Удалить предметы")
+    kb.add("Добавить предметы", "Удалить предметы")
     kb.add("Главное меню")
     await msg.answer("Что дальше?", reply_markup=kb)
     logger.info(f"[{uid}] Просмотр предметов: {have}")
 
-@dp.message_handler(lambda m: m.text == "➕ Добавить предметы")
+@dp.message_handler(lambda m: m.text == "Добавить предметы")
 async def enter_add_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "add"
-    # показываем ВСЕ предметы, без русского
     await msg.reply(
-        "Выбери предмет для добавления (или «⏹️ Прекратить»):",
+        "Выбери предмет для добавления:",
         reply_markup=subjects_keyboard(ALL_SUBJECTS)
     )
     logger.info(f"[{uid}] Режим добавления активирован")
 
-@dp.message_handler(lambda m: m.text == "➖ Удалить предметы")
+@dp.message_handler(lambda m: m.text == "Удалить предметы")
 async def enter_del_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = "del"
     have = user_subjects.get(uid, set())
-    if not have:
-        await msg.reply("Тебе нечего удалять — список ЕГЭ пуст.", reply_markup=main_keyboard())
-        return
-    # показываем только добавленные предметы (без русского, если хотите)
-    # но русский в списке не показываем для удаления
+    # Предметы, кроме Русского
     to_delete = sorted(have - {"Русский язык"})
     if not to_delete:
-        await msg.reply("Русский язык удалять не нужно — он проставлен автоматически.", reply_markup=main_keyboard())
+        await msg.reply(
+            "Нечего удалять (Русский язык установлен автоматически).",
+            reply_markup=main_keyboard()
+        )
         return
     await msg.reply(
-        "Выбери предмет для удаления (или «⏹️ Прекратить»):",
+        "Выбери предмет для удаления:",
         reply_markup=subjects_keyboard(to_delete)
     )
-    logger.info(f"[{uid}] Режим удаления активирован, удаляемые: {to_delete}")
+    logger.info(f"[{uid}] Режим удаления активирован")
 
 @dp.message_handler(lambda m: m.text == "⏹️ Прекратить")
 async def stop_mode(msg: types.Message):
@@ -130,20 +128,17 @@ async def handle_add_del(msg: types.Message):
     uid = msg.from_user.id
     mode = user_mode[uid]
     subj = msg.text
-
+    have = user_subjects.setdefault(uid, set())
     if mode == "add":
         if subj not in ALL_SUBJECTS:
-            await msg.reply("Пожалуйста, выбери предмет из списка или «⏹️ Прекратить».")
+            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить».")
             return
-        have = user_subjects.setdefault(uid, set())
         have.add(subj)
         await msg.reply(f"✅ Добавил: {subj}")
         logger.info(f"[{uid}] Добавлен предмет: {subj}")
-
-    else:  # mode == "del"
-        have = user_subjects.setdefault(uid, set())
+    else:
         if subj not in have or subj == "Русский язык":
-            await msg.reply(f"Нельзя удалить «{subj}»." if subj == "Русский язык" else "Этот предмет не был добавлен.")
+            await msg.reply("Нельзя удалить этот предмет.")
             return
         have.remove(subj)
         await msg.reply(f"🗑 Удалил: {subj}")
@@ -163,15 +158,12 @@ async def show_faculties(msg: types.Message):
     if not have:
         await msg.reply("Сначала добавь хотя бы один предмет ЕГЭ.", reply_markup=main_keyboard())
         return
-
     matches = [
         f"{item['faculty']} — {item['program']}"
         for item in FACULTIES
         if check_requirements(have, item.get("requirements", []))
     ]
-
     if matches:
-        # пустая строка между каждой программой
         await msg.reply("\n\n".join(matches), reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
