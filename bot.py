@@ -173,10 +173,16 @@ async def show_faculties(msg: types.Message):
     ]
 
     if matches:
-        await msg.reply("\n\n".join(matches), reply_markup=main_keyboard())
+        subj_list = ", ".join(sorted(have))
+        header = f"С предметами {subj_list} можно поступить на:"
+        await msg.reply(f"{header}
+
+" + "
+
+".join(matches), reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
+    logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")(f"[{uid}] Найдено факультетов: {len(matches)}")
 
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
