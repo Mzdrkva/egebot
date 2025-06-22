@@ -22,17 +22,21 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# В памяти: user_id → set предметов, user_id → режим ("add","del",None)
+# В памяти: user_id -> набор предметов и режим работы
 user_subjects: dict[int, set[str]] = {}
 user_mode: dict[int, str] = {}
 
-# Загрузка списка факультетов из JSON
+# Загрузка факультетов из JSON
 with open(FACULTIES_FILE, encoding="utf-8") as f:
     FACULTIES = json.load(f)
 
-# --- Утилиты ---
+# --- Вспомогательные функции ---
 
 def check_requirements(have: set[str], requirements: list) -> bool:
+    """
+    Проверяет, удовлетворяет ли набор have списку requirements.
+    requirements: элементы str (обязательный предмет) или list[str] (альтернативы).
+    """
     for req in requirements:
         if isinstance(req, list):
             if not any(r in have for r in req):
@@ -42,15 +46,12 @@ def check_requirements(have: set[str], requirements: list) -> bool:
                 return False
     return True
 
-# Загружаем факультеты: учитываем ключи "requirements" и "subjects"
-# Загрузка JSON факультетов уже выполнена выше
 
-
-# Клавиатуры
 def main_keyboard() -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("Мои ЕГЭ", "Мои факультеты")
     return kb
+
 
 def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -59,11 +60,12 @@ def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
     kb.add("⏹️ Прекратить")
     return kb
 
-# --- Хэндлеры ---
+# --- Обработчики ---
 
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
     uid = msg.from_user.id
+    # Добавляем автоматически Русский язык
     subjects = user_subjects.setdefault(uid, set())
     subjects.add("Русский язык")
     user_mode[uid] = None
@@ -142,7 +144,7 @@ async def handle_add_del(msg: types.Message):
 
     if mode == "add":
         if subj not in ALL_SUBJECTS:
-            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить»." )
+            await msg.reply("Пожалуйста, выбери предмет или «⏹️ Прекратить».")
             return
         have.add(subj)
         await msg.reply(f"✅ Добавил: {subj}")
@@ -172,7 +174,6 @@ async def show_faculties(msg: types.Message):
 
     matches = []
     for item in FACULTIES:
-        # Поддерживаем оба варианта ключа: "requirements" или "subjects"
         reqs = item.get("requirements") or item.get("subjects") or []
         if check_requirements(have, reqs):
             matches.append(f"{item['faculty']} — {item['program']}")
@@ -180,24 +181,10 @@ async def show_faculties(msg: types.Message):
     if matches:
         subj_list = ", ".join(sorted(have))
         header = f"С предметами {subj_list} можно поступить на:"
-        await msg.reply(f"{header}
-
-" + "
-
-".join(matches), reply_markup=main_keyboard())
+        await msg.reply(f"{header}\n\n" + "\n\n".join(matches), reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
     logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
-        subj_list = ", ".join(sorted(have))
-        header = f"С предметами {subj_list} можно поступить на:"
-        await msg.reply(f"{header}
-
-" + "
-
-".join(matches), reply_markup=main_keyboard())
-    else:
-        await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
-    logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")(f"[{uid}] Найдено факультетов: {len(matches)}")
 
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
