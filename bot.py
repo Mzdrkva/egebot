@@ -2,6 +2,7 @@ import logging
 import json
 from pathlib import Path
 from aiogram import Bot, Dispatcher, types
+from aiogram.types import ParseMode
 from aiogram.utils import executor
 
 # ----------------- Настройки -----------------
@@ -176,12 +177,13 @@ async def show_faculties(msg: types.Message):
 
     if matches:
         subj_list = ", ".join(sorted(have))
-        header = f"С предметами {subj_list} можно поступить на:"
+        header = f"С предметами {subj_list} можно поступить на:\n\n"
+        body = "\n\n".join(matches)
         footer = (
             "\n\nБолее подробная информация о каждом из факультетов "
-            "на сайте ЦПК МГУ: https://cpk.msu.ru"
+            "<a href=\"https://cpk.msu.ru\">ЦПК МГУ</a>."
         )
-        await msg.reply(f"{header}\n\n" + "\n\n".join(matches) + footer, reply_markup=main_keyboard())
+        await msg.reply(header + body + footer, reply_markup=main_keyboard(), parse_mode=ParseMode.HTML)
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
 
