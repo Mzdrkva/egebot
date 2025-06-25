@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
 # ----------------- Настройки -----------------
-API_TOKEN = "ВАШ_BOT_TOKEN_HERE"  # <-- вставьте свой токен
+API_TOKEN = "8065641616:AAHpIakr9YJk6jYPE4H_lp2CelIrh18ocNI"  # <-- вставьте свой токен
 FACULTIES_FILE = Path(__file__).parent / "faculties.json"
 # Русский язык мы добавляем автоматически, а в список кнопок его не включаем
 ALL_SUBJECTS = [
