@@ -189,6 +189,25 @@ async def show_faculties(msg: types.Message):
 
     logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
 
+# —————— Broadcast-команда для админа ——————
+@dp.message_handler(commands=["broadcast"])
+async def cmd_broadcast(msg: types.Message):
+    # Разрешаем только одному админу
+    if msg.from_user.id != 555847178:
+        return
+
+    text = "Этот бот сделан командой @APV_tg"
+    sent = 0
+    for user_id in user_subjects.keys():
+        try:
+            # шлём каждому зарегистрированному пользователю
+            await bot.send_message(user_id, text)
+            sent += 1
+        except Exception:
+            pass
+
+    await msg.reply(f"✅ Разослано {sent} пользователям.")
+    logger.info(f"[{msg.from_user.id}] сделал broadcast: {sent} пользователей")
 
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
