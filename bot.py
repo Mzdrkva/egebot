@@ -180,7 +180,7 @@ async def show_faculties(msg: types.Message):
         header = f"С предметами {subj_list} можно поступить на:\n\n"
         body = "\n\n".join(matches)
         footer = (
-            "\n\nБолее подробная информация о каждом из факультетов "
+            "\n\nБолее подробная информация о каждом из факультетов на сайте "
             "<a href=\"https://cpk.msu.ru\">ЦПК МГУ</a>."
         )
         await msg.reply(header + body + footer, reply_markup=main_keyboard(), parse_mode=ParseMode.HTML)
