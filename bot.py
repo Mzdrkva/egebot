@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
 # ----------------- Настройки -----------------
-API_TOKEN = "8065641616:AAHpIakr9YJk6jYPE4H_lp2CelIrh18ocNI"  # <-- вставьте свой токен
+API_TOKEN = "ВАШ_BOT_TOKEN_HERE"  # <-- вставьте свой токен
 FACULTIES_FILE = Path(__file__).parent / "faculties.json"
 ALL_SUBJECTS = [
     "Математика", "Физика", "Информатика", "Биология",
@@ -65,7 +65,6 @@ def subjects_keyboard(subjects: list[str]) -> types.ReplyKeyboardMarkup:
 @dp.message_handler(commands=["start"])
 async def cmd_start(msg: types.Message):
     uid = msg.from_user.id
-    # Добавляем автоматически Русский язык
     subjects = user_subjects.setdefault(uid, set())
     subjects.add("Русский язык")
     user_mode[uid] = None
@@ -133,6 +132,8 @@ async def stop_mode(msg: types.Message):
     uid = msg.from_user.id
     user_mode[uid] = None
     await msg.reply("Выход из режима редактирования.", reply_markup=main_keyboard())
+    # Дополнительная подсказка после завершения редактирования
+    await msg.reply("Чтобы узнать, на какие факультеты вы можете поступить, нажмите на кнопку 'Мои факультеты'.")
     logger.info(f"[{uid}] Режим редактирования завершён")
 
 @dp.message_handler(lambda m: m.from_user.id in user_mode and user_mode[m.from_user.id] in ("add", "del"))
@@ -181,7 +182,9 @@ async def show_faculties(msg: types.Message):
     if matches:
         subj_list = ", ".join(sorted(have))
         header = f"С предметами {subj_list} можно поступить на:"
-        await msg.reply(f"{header}\n\n" + "\n\n".join(matches), reply_markup=main_keyboard())
+        # Добавлена ссылка на сайт
+        footer = "\n\nБолее подробная информация о каждом из факультетов на сайте ЦПК МГУ: https://cpk.msu.ru"
+        await msg.reply(f"{header}\n\n" + "\n\n".join(matches) + footer, reply_markup=main_keyboard())
     else:
         await msg.reply("Пока ни одна программа не подходит.", reply_markup=main_keyboard())
     logger.info(f"[{uid}] Найдено факультетов: {len(matches)}")
